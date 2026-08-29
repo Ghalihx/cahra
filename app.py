@@ -50,7 +50,7 @@ def load_uploaded_reviews(file_bytes, filename):
             df = pd.read_csv(
                 io.BytesIO(file_bytes),
                 encoding=encoding,
-                sep=None,
+                sep=",",
                 engine="python",
             )
             break
