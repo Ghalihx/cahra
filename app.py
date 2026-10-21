@@ -1,6 +1,7 @@
 import hashlib
 import io
 import json
+import os
 
 import pandas as pd
 import streamlit as st
@@ -282,7 +283,11 @@ st.sidebar.write("10. Decision Support")
 st.sidebar.markdown("---")
 mode = st.sidebar.radio(
     "Mode Analisis",
-    ["📊 Analisis Dataset", "📝 Analisis Satu Ulasan"],
+    [
+        "📊 Analisis Dataset",
+        "📝 Analisis Satu Ulasan",
+        "🎯 Evaluasi Model (Confusion Matrix)",
+    ],
 )
 
 st.sidebar.markdown("---")
@@ -716,7 +721,7 @@ if mode == "📊 Analisis Dataset":
 # MODE 2 - SATU ULASAN
 # ============================================================
 
-else:
+elif mode == "📝 Analisis Satu Ulasan":
     st.header("📝 Analisis Satu Ulasan Wisata Bahari")
 
     review = st.text_area(
@@ -849,3 +854,215 @@ else:
             st.caption(
                 "Decision Support adalah rekomendasi penelitian, bukan keputusan otomatis final."
             )
+
+
+# ============================================================
+# MODE 3 - EVALUASI MODEL (CONFUSION MATRIX)
+# ============================================================
+
+else:
+    st.header("🎯 Evaluasi Model & Confusion Matrix")
+    st.write(
+        "Modul ini digunakan untuk menghitung evaluasi empiris performa model "
+        "menggunakan **Confusion Matrix**, **Accuracy**, **Precision**, **Recall**, dan **F1-Score** "
+        "untuk kebutuhan publikasi artikel ilmiah atau skripsi."
+    )
+
+    st.markdown("---")
+
+    col_opt1, col_opt2 = st.columns([1, 1])
+    with col_opt1:
+        use_sample = st.checkbox(
+            "Gunakan data uji sampel bawaan (20 ulasan berlabel)",
+            value=False,
+            help="Centang untuk melihat contoh hasil evaluasi tanpa perlu upload file sendiri.",
+        )
+
+    eval_file = None
+    if not use_sample:
+        eval_file = st.file_uploader(
+            "📤 Upload Dataset Uji Berlabel (CSV)",
+            type=["csv"],
+            help="CSV wajib memiliki kolom 'komentar' dan kolom 'sentimen_aktual' (Positif, Negatif, Netral).",
+            key="eval_file_uploader",
+        )
+
+    test_df = None
+    if use_sample:
+        sample_path = "data/data_uji_contoh.csv"
+        if os.path.exists(sample_path):
+            test_df = pd.read_csv(sample_path)
+            st.success("Menggunakan data uji contoh bawaan (20 ulasan).")
+        else:
+            st.error("File sampel data/data_uji_contoh.csv tidak ditemukan.")
+    elif eval_file is not None:
+        try:
+            test_df = pd.read_csv(eval_file)
+        except Exception as e:
+            st.error(f"Gagal membaca file: {e}")
+
+    if test_df is not None:
+        col_map = {str(c).strip().lower(): c for c in test_df.columns}
+        text_col = col_map.get("komentar") or col_map.get("review") or col_map.get("ulasan")
+        label_col = (
+            col_map.get("sentimen_aktual")
+            or col_map.get("label")
+            or col_map.get("sentimen")
+            or col_map.get("actual")
+        )
+
+        if not text_col or not label_col:
+            st.error(
+                "Dataset wajib memiliki kolom teks ulasan ('komentar') dan kolom label aktual ('sentimen_aktual'). "
+                f"Kolom yang ditemukan: {list(test_df.columns)}"
+            )
+            st.stop()
+
+        with st.expander("👀 Pratinjau Dataset Uji", expanded=False):
+            st.dataframe(test_df[[text_col, label_col]], use_container_width=True, hide_index=True)
+
+        if st.button("🚀 Jalankan Evaluasi Model", type="primary", use_container_width=True):
+            with st.spinner("Menjalankan pipeline prediksi pada data uji..."):
+                from evaluate import predict_sentiment
+                from sklearn.metrics import (
+                    confusion_matrix,
+                    classification_report,
+                    ConfusionMatrixDisplay,
+                )
+                import matplotlib
+                matplotlib.use("Agg")
+                import matplotlib.pyplot as plt
+
+                y_true = []
+                y_pred = []
+                errors = []
+
+                for idx, row in test_df.iterrows():
+                    actual = str(row[label_col]).strip().capitalize()
+                    pred = predict_sentiment(str(row[text_col]))
+                    y_true.append(actual)
+                    y_pred.append(pred)
+
+                    if actual != pred:
+                        errors.append({
+                            "No": idx + 1,
+                            "Komentar": row[text_col],
+                            "Aktual": actual,
+                            "Prediksi": pred,
+                        })
+
+                labels = ["Positif", "Negatif", "Netral"]
+                cm = confusion_matrix(y_true, y_pred, labels=labels)
+                cm_df = pd.DataFrame(
+                    cm,
+                    index=[f"Aktual {l}" for l in labels],
+                    columns=[f"Prediksi {l}" for l in labels],
+                )
+
+                rep_dict = classification_report(
+                    y_true, y_pred, labels=labels, output_dict=True, zero_division=0
+                )
+                rep_df = pd.DataFrame(rep_dict).transpose()
+
+                st.session_state["eval_results"] = {
+                    "cm_df": cm_df,
+                    "cm": cm,
+                    "rep_df": rep_df,
+                    "errors": errors,
+                    "total": len(test_df),
+                    "acc": rep_dict.get("accuracy", 0.0),
+                    "macro_f1": rep_dict.get("macro avg", {}).get("f1-score", 0.0),
+                }
+
+        if "eval_results" in st.session_state:
+            res = st.session_state["eval_results"]
+            cm_df = res["cm_df"]
+            cm = res["cm"]
+            rep_df = res["rep_df"]
+            errors = res["errors"]
+
+            st.success("Evaluasi model selesai dihitung.")
+
+            k1, k2, k3, k4 = st.columns(4)
+            k1.metric("Total Data Uji", f"{res['total']:,}")
+            k2.metric("Akurasi (Accuracy)", f"{res['acc'] * 100:.2f}%")
+            k3.metric("F1-Score (Macro Avg)", f"{res['macro_f1'] * 100:.2f}%")
+            k4.metric("Jumlah Prediksi Salah", f"{len(errors):,}")
+
+            eval_tabs = st.tabs([
+                "📊 Confusion Matrix",
+                "📈 Classification Report",
+                "🔍 Analisis Error (Pembahasan)",
+            ])
+
+            with eval_tabs[0]:
+                st.subheader("1. Confusion Matrix")
+                c_cm1, c_cm2 = st.columns([1, 1])
+                with c_cm1:
+                    st.write("**Tabel Nilai Confusion Matrix**")
+                    st.dataframe(cm_df, use_container_width=True)
+                    st.download_button(
+                        "⬇️ Download Tabel CSV",
+                        dataframe_to_csv_bytes(cm_df.reset_index()),
+                        file_name="tabel_confusion_matrix.csv",
+                        mime="text/csv",
+                    )
+                with c_cm2:
+                    st.write("**Grafik Heatmap (Siap Pakai untuk Artikel)**")
+                    import matplotlib.pyplot as plt
+                    from sklearn.metrics import ConfusionMatrixDisplay
+                    labels = ["Positif", "Negatif", "Netral"]
+                    fig, ax = plt.subplots(figsize=(5, 4), dpi=300)
+                    disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=labels)
+                    disp.plot(cmap="Blues", ax=ax, colorbar=True, values_format="d")
+                    ax.set_title("Confusion Matrix CAHRA", fontsize=11, pad=10)
+                    plt.tight_layout()
+                    st.pyplot(fig)
+
+                    buf = io.BytesIO()
+                    fig.savefig(buf, format="png", dpi=300)
+                    plt.close(fig)
+                    st.download_button(
+                        "⬇️ Download Gambar Heatmap (300 DPI)",
+                        buf.getvalue(),
+                        file_name="confusion_matrix_300dpi.png",
+                        mime="image/png",
+                    )
+
+            with eval_tabs[1]:
+                st.subheader("2. Classification Report (Metrik Kinerja)")
+                st.write(
+                    "Tabel di bawah ini dapat langsung disalin ke bab **Hasil dan Pembahasan** di artikel Anda."
+                )
+                filtered_rep = rep_df.loc[
+                    ["Positif", "Negatif", "Netral", "accuracy", "macro avg", "weighted avg"],
+                    ["precision", "recall", "f1-score", "support"],
+                ].round(4)
+                st.dataframe(filtered_rep, use_container_width=True)
+                st.download_button(
+                    "⬇️ Download Metrik CSV",
+                    dataframe_to_csv_bytes(filtered_rep.reset_index()),
+                    file_name="metrik_evaluasi.csv",
+                    mime="text/csv",
+                )
+
+            with eval_tabs[2]:
+                st.subheader("3. Analisis Kesalahan (Error Analysis)")
+                st.write(
+                    "Ulasan berikut adalah kasus di mana prediksi model berbeda dari label aktual manusia. "
+                    "Gunakan daftar ini sebagai bahan diskusi di bab **Pembahasan**."
+                )
+                if errors:
+                    err_df = pd.DataFrame(errors)
+                    st.dataframe(err_df, use_container_width=True, hide_index=True)
+                    st.download_button(
+                        "⬇️ Download Data Error CSV",
+                        dataframe_to_csv_bytes(err_df),
+                        file_name="analisis_error.csv",
+                        mime="text/csv",
+                    )
+                else:
+                    st.success("Luar biasa! Tidak ada kesalahan klasifikasi pada data uji ini.")
+    else:
+        st.info("Silakan pilih 'Gunakan data uji sampel' di atas atau upload file CSV pengujian Anda.")
+
