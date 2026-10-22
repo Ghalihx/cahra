@@ -22,6 +22,22 @@ from modules.xai import (
 )
 
 
+def _load_local_env():
+    env_file = os.path.join(os.path.dirname(__file__), ".env")
+    if os.path.exists(env_file):
+        try:
+            with open(env_file, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#") and "=" in line:
+                        k, v = line.split("=", 1)
+                        os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+        except Exception:
+            pass
+
+_load_local_env()
+
+
 # ============================================================
 # KONFIGURASI
 # ============================================================
@@ -377,18 +393,31 @@ use_llm = st.sidebar.checkbox(
     ),
 )
 
-gemini_api_key = ""
-gemini_model = "gemini-3.7-flash"
+# Cek ketersediaan default API Key dari secrets atau env
+default_api_key = os.getenv("GEMINI_API_KEY", "")
+if not default_api_key:
+    try:
+        default_api_key = st.secrets.get("GEMINI_API_KEY", "")
+    except Exception:
+        pass
+
+default_model = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
+if not default_model or default_model == "gemini-3.7-flash":
+    default_model = "gemini-3.8-flash"
+
+gemini_api_key = default_api_key
+gemini_model = default_model
 
 if use_llm:
     gemini_api_key = st.sidebar.text_input(
         "Gemini API Key",
+        value=default_api_key,
         type="password",
-        help="API key hanya digunakan pada sesi aplikasi ini.",
+        help="API key terisi otomatis jika ada di .env / secrets, atau masukkan manual.",
     )
     gemini_model = st.sidebar.text_input(
         "Model Gemini",
-        value="gemini-3.7-flash",
+        value=default_model,
         help="Jika model sedang 503/high demand, CAHRA akan retry lalu mencoba model fallback otomatis.",
     )
 

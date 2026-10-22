@@ -48,7 +48,7 @@ def llm_reasoning(
     contexts: list[dict] | None = None,
     *,
     api_key: str | None = None,
-    model: str = "gemini-3.7-flash",
+    model: str = "gemini-3.8-flash",
     dataset_summary: str | None = None,
 ) -> dict[str, Any]:
     if not api_key or not str(api_key).strip():
@@ -114,7 +114,7 @@ Kembalikan JSON VALID saja dengan struktur berikut:
 
     # Model utama dulu; bila 503 terus, coba fallback yang lebih ringan.
     candidate_models = []
-    for m in [model, "gemini-3.5-flash-lite", "gemini-3.5-flash"]:
+    for m in [model, "gemini-3.8-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-3.7-flash"]:
         if m and m not in candidate_models:
             candidate_models.append(m)
 
