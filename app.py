@@ -570,6 +570,19 @@ if mode == "📊 Analisis Dataset":
             if absa_df.empty:
                 st.warning("Tidak ada aspek yang terdeteksi pada dataset.")
             else:
+                pos_count = int((absa_df["Sentimen"] == "Positif").sum())
+                neg_count = int((absa_df["Sentimen"] == "Negatif").sum())
+                net_count = int((absa_df["Sentimen"] == "Netral").sum())
+                total_temuan = len(absa_df)
+
+                s1, s2, s3, s4 = st.columns(4)
+                s1.metric("Total Temuan Aspek", f"{total_temuan:,}")
+                s2.metric("Sentimen Positif", f"{pos_count:,}", f"{(pos_count/total_temuan)*100:.1f}%" if total_temuan else None)
+                s3.metric("Sentimen Negatif", f"{neg_count:,}", f"{(neg_count/total_temuan)*100:.1f}%" if total_temuan else None)
+                s4.metric("Sentimen Netral", f"{net_count:,}", f"{(net_count/total_temuan)*100:.1f}%" if total_temuan else None)
+
+                st.markdown("---")
+
                 aspek_options = ["Semua"] + sorted(
                     absa_df["Aspek"].dropna().unique().tolist()
                 )
@@ -956,8 +969,18 @@ else:
         with single_tabs[1]:
             st.subheader("2. Aspect-Based Sentiment Analysis")
             if results:
+                res_df = pd.DataFrame(results)
+                pos_single = int((res_df["Sentimen"] == "Positif").sum()) if "Sentimen" in res_df.columns else 0
+                neg_single = int((res_df["Sentimen"] == "Negatif").sum()) if "Sentimen" in res_df.columns else 0
+                net_single = int((res_df["Sentimen"] == "Netral").sum()) if "Sentimen" in res_df.columns else 0
+
+                sc1, sc2, sc3 = st.columns(3)
+                sc1.metric("Positif", f"{pos_single}")
+                sc2.metric("Negatif", f"{neg_single}")
+                sc3.metric("Netral", f"{net_single}")
+
                 st.dataframe(
-                    pd.DataFrame(results),
+                    res_df,
                     use_container_width=True,
                     hide_index=True,
                 )
